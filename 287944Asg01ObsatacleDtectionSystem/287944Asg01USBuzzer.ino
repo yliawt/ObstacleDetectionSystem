@@ -1,79 +1,70 @@
-#include <Arduino.h>
-#include <ESP8266WiFi.h>
-#include <ESP8266WebServer.h>
+#include <Arduino.h> // Arduino core library
+#include <ESP8266WiFi.h> // ESP8266 WiFi library
+#include <ESP8266WebServer.h> // ESP8266 WebServer library
 
-ESP8266WebServer server(80); // create WebServer object
+ESP8266WebServer server(80); // Create a WebServer object listening on port 80
 
-const char* ssidap = "Obstacle Detector WiFi"; // Access point SSID
-const char* passap = ""; // Access point password
+const char* ssidap = "Obstacle Detector WiFi"; // Set the access point SSID
+const char* passap = ""; // Set the access point password
 
-const int trigPin = 12;
-const int echoPin = 14;
-const int buzzerPin = 13; // Buzzer connected to GPIO 13
+const int echoPin = 14; // Echo pin connected to GPIO14 (D5)
+const int trigPin = 12; // Trigger pin connected to GPIO12 (D6)
+const int buzzerPin = 13; // Buzzer connected to GPIO13 (D7)
 
-// Define sound velocity in cm/uS
+// Define the speed of sound in cm/uS
 #define SOUND_VELOCITY 0.034
 
-long duration;
-float distanceCm;
-float updatedRangeValue = 5; // Default value for the detection range
+long duration; //  Duration of the sound wave travel time
+float distanceCm; // Calculated distance in cm
+float updatedRangeValue = 5; // Default detection range
 
 void setup() {
-  // Starts the serial communication
-  Serial.begin(115200); 
- 
-  // Set up WiFi access point
-  WiFi.mode(WIFI_AP);
+  Serial.begin(115200); // Start serial communication at 115200 baud rate
+
+  WiFi.mode(WIFI_AP); // Set WiFi mode to access point
   WiFi.softAP(ssidap, passap); // Set SSID and password for the access point
-  Serial.println("Connect to WiFi");
-  Serial.println("WiFi name: Obstacle Detector WiFi");
+  Serial.println("Connect to WiFi"); // Print message 
+  Serial.println("WiFi name: Obstacle Detector WiFi"); // Print access point SSID
   Serial.println(WiFi.softAPIP()); // Print access point IP address
   
-  // Create web server routes
-  createWebServer();
-  server.begin();
-
-  pinMode(trigPin, OUTPUT); // Sets the trigPin as an Output
-  pinMode(echoPin, INPUT); // Sets the echoPin as an Input
-  pinMode(buzzerPin, OUTPUT); // Sets the buzzerPin as an Output
+  createWebServer(); // Create web server routes
+  server.begin(); // Start web server
+  
+  pinMode(echoPin, INPUT); // Set the echoPin as an Input
+  pinMode(trigPin, OUTPUT); // Set the trigPin as an Output
+  pinMode(buzzerPin, OUTPUT); // Set the buzzerPin as an Output
 }
 
 void loop() {
   server.handleClient(); // Handle web server requests
   
-  // Clears the trigPin
-  digitalWrite(trigPin, LOW);
-  delayMicroseconds(2);
-  // Sets the trigPin on HIGH state for 10 microseconds
-  digitalWrite(trigPin, HIGH);
+  digitalWrite(trigPin, LOW); // Clear the trigPin
+  delayMicroseconds(2); // Delay for stability
+  digitalWrite(trigPin, HIGH); // Set the trigPin on HIGH state for 10 microseconds
   delayMicroseconds(10);
-  digitalWrite(trigPin, LOW);
+  digitalWrite(trigPin, LOW); // Reset the trigPin
   
-  // Reads the echoPin, returns the sound wave travel time in microseconds
-  duration = pulseIn(echoPin, HIGH);
+  duration = pulseIn(echoPin, HIGH); // Read the echoPin to get the sound wave travel time
   
-  // Calculate the distance
-  distanceCm = duration * SOUND_VELOCITY / 2;
+  distanceCm = duration * SOUND_VELOCITY / 2; // Calculate the distance
   
-  // Check if the distance is less than the updated range value from the web page
-  if (distanceCm < updatedRangeValue) {
-    Serial.println("Item Nearby!");
+  if (distanceCm < updatedRangeValue) { // Check if the distance is less than the updated range value
+    Serial.println("Item Nearby!"); // Print message
     digitalWrite(buzzerPin, HIGH); // Turn on the buzzer
   } else {
     digitalWrite(buzzerPin, LOW); // Turn off the buzzer
   }
 
-  // Prints the distance on the Serial Monitor
-  Serial.print("Distance: ");
-  Serial.print(distanceCm);
-  Serial.println(" cm");
-  Serial.println("");
+  Serial.print("Distance: "); // Print message
+  Serial.print(distanceCm); // Print distance
+  Serial.println(" cm"); // Print units
+  Serial.println(""); // Print blank line
 
   delay(1000); // Delay to avoid excessive triggering and noise
 }
 
-void createWebServer() {
-  server.on("/", HTTP_GET, []() {
+void createWebServer() { // Declare function
+  server.on("/", HTTP_GET, []() { // Define route for root page
     String content = "<!DOCTYPE html><html><head><title>Obstacle Detector System</title>";
     content += "<script>";
     content += "function updateDistance() {";
@@ -106,29 +97,29 @@ void createWebServer() {
     content += "</form>";
     content += "</div>";
     content += "</body></html>";
-    server.send(200, "text/html", content); // Send response
-  });
+   
+   server.send(200, "text/html", content); // Send HTTP response with status code 200, content type text/html, and the provided content
 
-  server.on("/update", HTTP_GET, []() {
-    String range = server.arg("range");
+server.on("/update", HTTP_GET, []() { // Define route "/update" for HTTP GET requests with a lambda function
+    String range = server.arg("range"); // Get the value of the "range" parameter from the request URL
 
     // Convert range to float and update global variable if needed
-    float newRange = range.toFloat();
-    if (newRange > 0 && newRange <= 400) {
-      updatedRangeValue = newRange; // Update the global variable
-      Serial.print("Updated Detection Range: ");
-      Serial.println(updatedRangeValue);
+    float newRange = range.toFloat(); // Convert string to float
+    if (newRange > 0 && newRange <= 400) { // Check if the new range value is within the valid range
+      updatedRangeValue = newRange; // Update the global variable with the new range value
+      Serial.print("Updated Detection Range: "); // Print message to Serial Monitor
+      Serial.println(updatedRangeValue); // Print the updated detection range value
     } else {
-      Serial.println("Invalid range value. Please enter a value between 1 and 400.");
+      Serial.println("Invalid range value. Please enter a value between 1 and 400."); // Print error message to Serial Monitor
     }
 
     // Redirect back to the main page with updated settings
-    server.sendHeader("Location", "/");
-    server.send(303); // Send See Other status code for redirect
+    server.sendHeader("Location", "/"); // Set the location header to the root ("/") URL
+    server.send(303); // Send HTTP response with status code 303 (See Other) for redirect
   });
 
-  server.on("/distance", HTTP_GET, []() {
+  server.on("/distance", HTTP_GET, []() { // Define route "/distance" for HTTP GET requests with a lambda function
     // Respond with the current distance value
-    server.send(200, "text/plain", String(distanceCm));
+    server.send(200, "text/plain", String(distanceCm)); // Send HTTP response with status code 200, content type text/plain, and the current distance value
   });
 }
