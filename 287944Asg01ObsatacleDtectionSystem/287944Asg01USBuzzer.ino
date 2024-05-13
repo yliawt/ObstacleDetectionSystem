@@ -98,7 +98,10 @@ void createWebServer() { // Declare function
     content += "</div>";
     content += "</body></html>";
    
+
    server.send(200, "text/html", content); // Send HTTP response with status code 200, content type text/html, and the provided content
+
+  });
 
 server.on("/update", HTTP_GET, []() { // Define route "/update" for HTTP GET requests with a lambda function
     String range = server.arg("range"); // Get the value of the "range" parameter from the request URL
