@@ -1,36 +1,44 @@
-#include <Arduino.h>  // Arduino core library
+//importing required libraries, defining
+#include <Arduino.h>
 #include <EEPROM.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include "PageIndex.h"
+
+//defining pin and variables
+#define TRIGGER_PIN D5
+#define ECHO_PIN D6
 #define BUZZER_PIN D7
-#define TRIGGER_PIN D5  // Define trigger pin for ultrasonic sensor
-#define ECHO_PIN D6     // Define echo pin for ultrasonic sensor
 
 String ssid, password, deviceId, message;
 boolean buzzerState = true;
-long duration;                // Duration of the sound wave travel time
-float distanceCm;             // Calculated distance in cm
-float updatedRangeValue = 5;  // Default detection range
-int webType;                  // Global variable to store web type
+long duration;    
+float distanceCm; 
+float updatedRangeValue = 5; 
+int webType; 
 
+// Create an instance of the web server on port 80
 ESP8266WebServer server(80);
 
 void setup() {
+  //initiate serial and eeprom
   Serial.begin(115200);
   EEPROM.begin(512);
-  readData();  // Load ssid, password, deviceId, and buzzerState from EEPROM
+  // Load ssid, password, deviceId, and buzzerState from EEPROM
+  readData();
   delay(100);
-  pinMode(ECHO_PIN, INPUT);      // Set the echoPin as an Input
-  pinMode(TRIGGER_PIN, OUTPUT);  // Set the trigPin as an Output
-  pinMode(BUZZER_PIN, OUTPUT);   // Set buzzer pin as output
+  //set pin as input and output
+  pinMode(ECHO_PIN, INPUT);
+  pinMode(TRIGGER_PIN, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
 
+  //test wifi connection (WebType 1 -> Connected; WebType 0 -> APMode)
   if (testWiFi()) {
     Serial.println("Connected to WiFi!");
     Serial.println("Web Type 1");
     Serial.println("");
-    webType = 1;                    // Set web type to 1
-    digitalWrite(BUZZER_PIN, LOW);  // Ensure the buzzer is off initially
+    webType = 1;
+    digitalWrite(BUZZER_PIN, LOW);  //off
     launchWeb(1);
   } else {
     const char* ssidap = "NodeMCU-AP";
@@ -41,7 +49,7 @@ void setup() {
     Serial.print("http://");
     Serial.println(WiFi.softAPIP());
     Serial.println("Web Type 0");
-    webType = 0;  // Set web type to 0
+    webType = 0;
     launchWeb(0);
     Serial.println("");
   }
@@ -49,40 +57,43 @@ void setup() {
 
 void loop() {
   if (webType == 1) {
-    checkUltrasonic();  // Only check ultrasonic sensor when webType is 1
+    checkUltrasonic();  //ultrasonic to work only in WebType 1
   }
-  server.handleClient();
+  server.handleClient();  // Handle client requests
 }
 
+//set trigpin + calculate distance + update message and buzzer
 void checkUltrasonic() {
-  digitalWrite(TRIGGER_PIN, LOW);   // Clear the trigPin
-  delayMicroseconds(2);             // Delay for stability
-  digitalWrite(TRIGGER_PIN, HIGH);  // Set the trigPin on HIGH state for 10 microseconds
+  digitalWrite(TRIGGER_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIGGER_PIN, HIGH); 
   delayMicroseconds(10);
-  digitalWrite(TRIGGER_PIN, LOW);  // Reset the trigPin
+  digitalWrite(TRIGGER_PIN, LOW); 
 
-  // Read the echoPin to get the sound wave travel time
+  // Read echoPin->sound wave travel time + calculate distance
   duration = pulseIn(ECHO_PIN, HIGH);
-  // Calculate the distance
   distanceCm = duration * 0.034 / 2;
 
-  if (distanceCm < updatedRangeValue) {  // Check if the distance is less than the updated range value
-    Serial.println("Item Nearby!");      // Print message if web type is 1
-    digitalWrite(BUZZER_PIN, LOW);  // Turn on the buzzer
-    message="Item within Range!";
+  //message and buzzer changes
+  if (distanceCm < updatedRangeValue) {
+    Serial.println("Item Nearby!");
+    digitalWrite(BUZZER_PIN, LOW);
+    message = "Item within Range!";
   } else {
-    digitalWrite(BUZZER_PIN, HIGH);  // Turn off the buzzer
-    message="Nothing Range!";
+    digitalWrite(BUZZER_PIN, HIGH);
+    message = "Nothing Range!";
   }
 
-  Serial.print("Distance: ");  // Print message if web type is 1
-  Serial.print(distanceCm);    // Print distance if web type is 1
-  Serial.println(" cm");       // Print units if web type is 1
-  Serial.println("");          // Print blank line if web type is 1
+  //serial print
+  Serial.print("Distance: ");
+  Serial.print(distanceCm);
+  Serial.println(" cm");
+  Serial.println("");
 
   delay(1000);  // Delay to avoid excessive triggering and noise
 }
 
+//create and start web server
 void launchWeb(int webtype) {
   createWebServer(webtype);
   server.begin();
@@ -91,34 +102,36 @@ void launchWeb(int webtype) {
 void createWebServer(int webtype) {
   if (webtype == 0) {
     server.on("/", []() {
+      //webserver code and parameters
       String configpage = FPSTR(CONFIG_page);
       configpage.replace("%%SSID%%", ssid);
       configpage.replace("%%PASSWORD%%", password);
       configpage.replace("%%DEVICEID%%", deviceId);
       configpage.replace("%%BUZZERON%%", buzzerState ? "checked" : "");
       configpage.replace("%%BUZZEROFF%%", !buzzerState ? "checked" : "");
-
       server.send(200, "text/html", configpage);
     });
 
     server.on("/setting", []() {
-  ssid = server.arg("ssid");
-  password = server.arg("password");
-  deviceId = server.arg("deviceId");
-  buzzerState = (server.arg("buzzerState") == "1");
-  digitalWrite(BUZZER_PIN, buzzerState ? HIGH : LOW);  // Set relay status (HIGH = ON, LOW = OFF)
-  writeData(ssid, password, deviceId, buzzerState);
-
-  String rebootpage = FPSTR(REBOOT_page);
-  server.send(200, "text/html", rebootpage);
-
-  Serial.println("Reboot for effect");
-  Serial.println("");
-});
-
+      //save to eeprom
+      ssid = server.arg("ssid");
+      password = server.arg("password");
+      deviceId = server.arg("deviceId");
+      buzzerState = (server.arg("buzzerState") == "1");
+      digitalWrite(BUZZER_PIN, buzzerState ? HIGH : LOW);  // Set buzzerstate (HIGH = ON, LOW = OFF)
+      writeData(ssid, password, deviceId, buzzerState);
+      //webpage code
+      String rebootpage = FPSTR(REBOOT_page);
+      server.send(200, "text/html", rebootpage);
+      //serial print
+      Serial.println("Reboot for effect");
+      Serial.println("");
+    });
   }
+
   if (webtype == 1) {
     server.on("/", []() {
+      //webpage code and parameter
       String mainpage = FPSTR(MAIN_page);
       mainpage.replace("%%DISTANCECM%%", String(distanceCm));
       mainpage.replace("%%RANGEVALUE%%", String(updatedRangeValue));
@@ -126,9 +139,9 @@ void createWebServer(int webtype) {
       server.send(200, "text/html", mainpage);
     });
 
+    //update latest range + limit value from 0 to 400
     server.on("/update", HTTP_GET, []() {
-      String range = server.arg("range");
-      float newRange = range.toFloat();
+      float newRange = server.arg("range").toFloat();
       if (newRange > 0 && newRange <= 400) {
         updatedRangeValue = newRange;
         Serial.print("Updated Detection Range: ");
@@ -139,12 +152,14 @@ void createWebServer(int webtype) {
       server.sendHeader("Location", "/");
       server.send(303);
     });
+
     server.on("/distance", HTTP_GET, []() {
       server.send(200, "text/plain", String(distanceCm));
     });
   }
 }
 
+//check wifi conectivity
 boolean testWiFi() {
   WiFi.begin(ssid.c_str(), password.c_str());
   int c = 0;
@@ -163,6 +178,8 @@ boolean testWiFi() {
   Serial.println("");
   return false;
 }
+
+//write data to eeprom
 void writeData(String a, String b, String c, bool d) {
   Serial.println("");
   Serial.println("Writing to EEPROM");
@@ -170,55 +187,56 @@ void writeData(String a, String b, String c, bool d) {
     if (i < a.length()) {
       EEPROM.write(i, a[i]);
     } else {
-      EEPROM.write(i, 0);  // Null character to pad the remaining space
+      EEPROM.write(i, 0);
     }
   }
   for (int i = 20; i < 40; i++) {
     if (i - 20 < b.length()) {
       EEPROM.write(i, b[i - 20]);
     } else {
-      EEPROM.write(i, 0);  // Null character to pad the remaining space
+      EEPROM.write(i, 0);
     }
   }
   for (int i = 40; i < 60; i++) {
     if (i - 40 < c.length()) {
       EEPROM.write(i, c[i - 40]);
     } else {
-      EEPROM.write(i, 0);  // Null character to pad the remaining space
+      EEPROM.write(i, 0);
     }
   }
-  EEPROM.write(80, d ? 1 : 0);  // Save buzzerState as a single byte (1 for true, 0 for false)
+  EEPROM.write(80, d ? 1 : 0);  // Save buzzerState as single byte (1 for true, 0 for false)
   EEPROM.commit();
   Serial.println("Write successful.");
   Serial.println("");
 }
 
+//read data from eeprom
 void readData() {
   Serial.println("");
   Serial.println("Reading from EEPROM....");
-  char ssidArr[21];      // 20 characters + null terminator
-  char passwordArr[21];  // 20 characters + null terminator
-  char deviceIdArr[21];  // 20 characters + null terminator
+  char ssidArr[21];
+  char passwordArr[21];
+  char deviceIdArr[21];
 
   for (int i = 0; i < 20; i++) {
     ssidArr[i] = char(EEPROM.read(i));
   }
-  ssidArr[20] = '\0';  // Null terminate the SSID string
+  ssidArr[20] = '\0';
 
   for (int i = 20; i < 40; i++) {
     passwordArr[i - 20] = char(EEPROM.read(i));
   }
-  passwordArr[20] = '\0';  // Null terminate the password string
+  passwordArr[20] = '\0';
 
   for (int i = 40; i < 60; i++) {
     deviceIdArr[i - 40] = char(EEPROM.read(i));
   }
-  deviceIdArr[20] = '\0';  // Null terminate the device ID string
+  deviceIdArr[20] = '\0';
 
   ssid = String(ssidArr);
   password = String(passwordArr);
   deviceId = String(deviceIdArr);
-  buzzerState = EEPROM.read(80) == 1;  // Read the buzzerState as a boolean
+  buzzerState = EEPROM.read(80) == 1;
 
   Serial.println("");
   Serial.println("WiFi ssid from EEPROM: " + ssid);
